@@ -11,9 +11,9 @@ if __name__=="__main__":
     alpha = 0.01
     reg_param = 0.01
     lr = 0.001
-    abs_loss='cat'
-    comp_loss='BT'
-    epochs = 50
+    abs_loss=scaledCrossEntropy
+    comp_loss=scaledCrossEntropy
+    epochs = 5
     batch_size = 32
     combined_net = combined_deep_ROP(input_shape=input_shape, no_of_classes=no_of_classes, data_dir=data_dir)
     combined_net.train(save_model_name=save_model_name,

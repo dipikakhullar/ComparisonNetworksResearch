@@ -8,6 +8,7 @@ import tensorflow as tf
 from import_data_facd import *
 # from keras.layers import Input, Lambda, Dense
 from keras.models import Model
+# from tensorflow.keras.models import Model
 from keras.optimizers import SGD
 import numpy as np
 import tensorflow as tf
@@ -18,48 +19,11 @@ from tensorflow.keras.regularizers import l2
 # from googlenet import *
 from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, AveragePooling2D, ZeroPadding2D, Dropout, Flatten, Concatenate, Reshape, Activation
-from mini_model import create_mini_googlenet
+from mini_model import create_mini_googlenet, GoogLeNet
+from keras.applications.resnet50 import ResNet50
+from googlenet_functional import *
 
 path = "./FACD_image/"
-
-# def importData(input_shape, data_dir):
-#     batch_size=32
-#     datagen_args = dict(rotation_range=20,
-#         width_shift_range=0.2,
-#         height_shift_range=0.2,
-#                        rescale=1./255)
-#     datagen = ImageDataGenerator(**datagen_args)
-#     datagenerator = datagen.flow_from_directory(data_dir,target_size=input_shape,
-#                                             batch_size=batch_size,interpolation="lanczos",shuffle=True)
-
-#     return datagenerator
-# datagenerator = importData(input_shape=(3, 224, 224), data_dir='./FACD_image' )
-# print("Number of Samples: ", datagenerator.samples)
-# print("Number of Classes: ", len(datagenerator.class_indices))
-# print("Number of Samples Per Class: ", int(datagenerator.samples/len(datagenerator.class_indices)))
-
-
-# def load_data(datasplit):
-#     batch_size=32
-#     datagen_args = dict(rotation_range=20,
-#                     width_shift_range=0.2,
-#                     height_shift_range=0.2,
-#                     rescale=1./255,
-#                     validation_split=0.2)
-#     datagen_args = dict(rotation_range=20,
-#         width_shift_range=0.2,
-#         height_shift_range=0.2,
-#                        rescale=1./255)
-#     datagen = ImageDataGenerator(**datagen_args)
-#     if datasplit == "train":
-#         train_generator = datagen.flow_from_directory(path,target_size=(128,128),
-#                                             batch_size=batch_size,interpolation="lanczos",shuffle=True,subset='training')
-#         return train_generator
-#     else:
-#         validation_generator = datagen.flow_from_directory(path,target_size=(128,128),
-#                                             batch_size=batch_size,interpolation="lanczos",shuffle=True,subset='validation')
-#         return validation_generator
-
 
 def BTPred(scalars):
     """
@@ -88,10 +52,13 @@ def scaledBTLoss(alpha):
     return BTLoss
 
 def scaledCrossEntropy(alpha):
-    print("scaledCrossEntropy func")
+    """Use this crossentropy loss function when there are two or more label classes. 
+    We expect labels to be provided in a one_hot representation. If you want to provide 
+    labels as integers, please use SparseCategoricalCrossentropy loss. 
+    There should be # classes floating point values per feature.
+    """
+
     def crossEntropy(y_true, y_pred):
-        print("y_true: ", y_true)
-        print("y_pred: ", y_pred)
         return alpha * K.categorical_crossentropy(y_true, y_pred)
     return crossEntropy
 
@@ -101,10 +68,7 @@ def scaledHinge(alpha):
     return hinge
 
 def scaledCompCrossEntropy(alpha):
-    print("FUNC: scaled Comp Cross entropy" )
     def crossEntropy(y_true, y_pred):
-        print("scaled cross entropy ytrue", type(y_true[0]))
-        print("scaled cross entropy ypred", type(y_pred[0]))
         return 1- alpha
     return tf.keras.losses.CategoricalCrossentropy()
 
@@ -125,102 +89,76 @@ class combined_deep_ROP(object):
         self.no_of_classes = no_of_classes
         self.data_dir = data_dir
 
+    def create_siamese(self, reg_param=0.02, no_of_score_layers=1, max_no_of_nodes=128):
+        print("FUNCTION: create_siamese")
 
-    def create_siamese(self, reg_param=0.0002, no_of_score_layers=1, max_no_of_nodes=128):
-        # print("FUNCTION: create_siamese")
+        # get features from base network
+
+        # MINI NET CODE:
         input1 = keras.Input(shape=self.input_shape)
         input2 = keras.Input(shape=self.input_shape)
-        print("input 1: ", input1.shape)
-        print("input 2: ", input2.shape)
-        # get features from base network
-        # feature1, feature2 = create_googlenet(input1, input2, reg_param=reg_param)
-        # 
-        # input1_flat = layers.Flatten()(input1)
-        # input2_flat = layers.Flatten()(input2)
-        # feature1 = layers.Dense(self.no_of_classes, activation='softmax', kernel_regularizer=l2(reg_param), name='abs1')
-        # feature2 = layers.Dense(self.no_of_classes, activation='softmax', kernel_regularizer=l2(reg_param), name='comp1')
-        
+
         feature1=create_mini_googlenet(input1, "feature1")
         feature2 = create_mini_googlenet(input2, "feature2")
         score1 = feature1(input1)
         score2 = feature2(input2)
-        # print("feature1", feature1.shape)
-        # create and pass through score layers
-        # score1 = feature1(input1_flat)
-        # score2 = feature2(input2_flat)
-        print("score 1: ", score1.shape)
-        print("score 2: ", score2.shape)
+
         for l in range(5):
-            layer_l = layers.Dense(int(max_no_of_nodes / (l+4)), activation='relu', kernel_regularizer=l2(reg_param), name='s'+str(l))
+            layer_l = layers.Dense(int(max_no_of_nodes / (l+4)), activation='relu', kernel_regularizer=l2(reg_param), name='score'+str(l))
             score1 = layer_l(score1)
-            print("score 1: ", score1.shape)
             score2 = layer_l(score2)
-            print("score 2: ", score2.shape)
 
         # create final layers of absolute and comparison
-        abs_out = layers.Dense(self.no_of_classes -1 , activation='softmax', kernel_regularizer=l2(reg_param), name='abs')
+        abs_out = layers.Dense(self.no_of_classes, activation='softmax', kernel_regularizer=l2(reg_param), name='abs')
         comp_out = layers.Dense(1, activation='sigmoid', kernel_regularizer=l2(reg_param), name='comp')
         
 
         # absolute part
         abs_out1 = abs_out(score1)
-        print("abs out: ", abs_out1.shape)
-        # print(np.shape(abs_out1))
         abs_net = Model(inputs=input1, outputs=abs_out1, name="AbsoluteNetwork")
-        print("Absolute Network Model Summary")
-        print(abs_net.output_shape)
-        # print(abs_net.summary())
+        
         # comparison part
         comp_out1 = comp_out(score1)
-
-
         comp_out2 = comp_out(score2)
-        print("comp out 1: ", comp_out1.shape)
-        print("comp out 2: ", comp_out2.shape)
 
-        distance = layers.Lambda(BTPred, output_shape=(1,))([comp_out1, comp_out2])
+        distance = layers.Lambda(BTPred, output_shape=(1,), name="distance")([comp_out1, comp_out2])
         comp_net = keras.Model(inputs=[input1, input2], outputs=distance, name="ComparisonNetwork")
-        print("Comparison Network Model Summary")
-        # print(comp_net.summary())
-        keras.utils.plot_model(comp_net, "comp_net.png", show_shapes=True)
-        keras.utils.plot_model(abs_net, "abs_net.png", show_shapes=True)
 
-        # comp_net = Model([input1, input2], distance)
+        # keras.utils.plot_model(comp_net, "comp_net.png", show_shapes=True)
+        # keras.utils.plot_model(abs_net, "abs_net.png", show_shapes=True)
+
+        comp_net = Model([input1, input2], distance)
         return abs_net, comp_net
 
     def train(self, save_model_name='./combined.h5',
-              reg_param=0.0002, no_of_score_layers=1, max_no_of_nodes=128, learning_rate=1e-4,
+              reg_param=0.002, no_of_score_layers=1, max_no_of_nodes=128, learning_rate=1e-2,
               abs_loss=scaledCrossEntropy, comp_loss=scaledCompCrossEntropy, alpha=0.5, epochs=100, batch_size=32):
         """
         Training CNN except validation and test folds
         """
         abs_imgs, abs_labels, comp_imgs_1, comp_imgs_2, comp_labels = self.data_gen.load_data(datasplit='train')
-        abs_net, comp_net = self.create_siamese\
-                        (reg_param=reg_param, no_of_score_layers=no_of_score_layers, max_no_of_nodes=max_no_of_nodes)
-        # load imagenet weights
-        print(type(abs_net))
-        print(type(alpha))
-        print(type(learning_rate))
+        # print("comp_imgs_1", comp_imgs_1.shape)
+        
+        abs_net, comp_net = self.create_siamese(reg_param=reg_param, no_of_score_layers=no_of_score_layers, max_no_of_nodes=max_no_of_nodes)
+
         # print(abs_loss(0.5))
         abs_net.compile(loss=scaledCrossEntropy(alpha=alpha), optimizer=SGD(learning_rate), metrics=['acc'])
-        # abs_net.load_weights('./googlenet_weights.h5', by_name=True)
         comp_net.compile(loss=scaledCompCrossEntropy(alpha=alpha), optimizer=SGD(learning_rate), metrics=['acc'])
+
+        # for layer in comp_net.layers: 
+        #     print(layer.get_config(), layer.get_weights())
         # train on abs only, comp only or both
         for epoch in range(epochs):
             print("EPOCH: ", epoch)
-            print("fitting abs net")
-            print("abs_imgs: ", abs_imgs.shape)
-            print("abs_labels: ", abs_labels.shape)
             abs_net.fit(abs_imgs, abs_labels, batch_size=batch_size, epochs=1)
-
-            print("comp labels", comp_labels.shape)
             comp_net.fit([comp_imgs_1, comp_imgs_2], comp_labels, batch_size=batch_size, epochs=1)
-            print('**********End of epoch ' + str(epoch))
-            if epoch % 5 ==0:
-                abs_imgs, abs_labels, comp_imgs_1, comp_imgs_2, comp_labels = self.data_gen.load_data(datasplit="train")
-                comp_pred = comp_net.evaluate([comp_imgs_1, comp_imgs_2], comp_labels, verbose=True)
-                abs_pred = abs_net.evaluate(abs_imgs, abs_labels, verbose=True)
-                print("COMP PRED: ", comp_pred, " ABS PRED: ", abs_pred)
+            print("COMPARISON NETWORK")
+            comp_pred = comp_net.predict([comp_imgs_1, comp_imgs_2], verbose=True)
+            comp_evaluate = comp_net.evaluate([comp_imgs_1, comp_imgs_2], comp_labels ,verbose=True)
+
+            print("ABSOLUTE NETWORK")
+            abs_pred = abs_net.predict(abs_imgs, verbose=True)
+            abs_evaluate = abs_net.evaluate(abs_imgs, abs_labels, verbose=True)
 
         # Save weights
         abs_net.save('Abs_' + save_model_name)

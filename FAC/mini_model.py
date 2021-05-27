@@ -11,21 +11,38 @@ from lrn import LRN
 from keras.models import Model
 from keras.layers import Input, Conv2D, MaxPooling2D, AveragePooling2D, Flatten, GlobalAveragePooling2D, Dense, Dropout
 from keras.layers.merge import concatenate
+import tensorflow as tf
+
+
+
 def create_mini_googlenet(input, name="none"):
 	input_pad = ZeroPadding2D(padding=(3, 3))(input)
 	conv1_7x7_s2 = Conv2D(64, (7,7), strides=(2,2), padding='valid', activation='relu', name='conv1/7x7_s2', kernel_regularizer=l2(0.0002))(input_pad)
 	conv1_zero_pad = ZeroPadding2D(padding=(1, 1))(conv1_7x7_s2)
-	pool1_helper = PoolHelper()(conv1_zero_pad)
-	pool1_3x3_s2 = MaxPooling2D(pool_size=(3,3), strides=(2,2), padding='valid', name='pool1/3x3_s2')(pool1_helper)
-	pool1_norm1 = LRN(name='pool1/norm1')(pool1_3x3_s2)
-	pool1_norm1_flat = layers.Flatten()(pool1_norm1)
-	dense1 = Dense(128, activation='relu', kernel_regularizer=l2(0.0002), name='dense1')(pool1_norm1_flat)
-	softmax = Dense(1, activation='softmax', kernel_regularizer=l2(0.0002), name='softmax')(dense1)
+	pool1_norm1_flat = layers.Flatten()(conv1_zero_pad)
+	dense1 = Dense(128, activation='relu', kernel_regularizer=l2(0.001), name='dense1')(pool1_norm1_flat)
+	softmax = Dense(2, activation=tf.keras.activations.softmax, kernel_regularizer=l2(0.001), name='softmax')(dense1)
 	output_model = Model(inputs=input, outputs=softmax, name=name)
 
 	print("MODEL OUTPUT SHAPE: ", output_model.output_shape)
 	# keras.utils.plot_model(output_model, "mini_net.png", show_shapes=True)
 	return output_model
+
+# def create_mini_googlenet(input, name="none"):
+# 	input_pad = ZeroPadding2D(padding=(3, 3))(input)
+# 	conv1_7x7_s2 = Conv2D(64, (7,7), strides=(2,2), padding='valid', activation='relu', name='conv1/7x7_s2', kernel_regularizer=l2(0.0002))(input_pad)
+# 	conv1_zero_pad = ZeroPadding2D(padding=(1, 1))(conv1_7x7_s2)
+# 	pool1_helper = PoolHelper()(conv1_zero_pad)
+# 	pool1_3x3_s2 = MaxPooling2D(pool_size=(3,3), strides=(2,2), padding='valid', name='pool1/3x3_s2')(pool1_helper)
+# 	pool1_norm1 = LRN(name='pool1/norm1')(pool1_3x3_s2)
+# 	pool1_norm1_flat = layers.Flatten()(pool1_norm1)
+# 	dense1 = Dense(128, activation='relu', kernel_regularizer=l2(0.0002), name='dense1')(pool1_norm1_flat)
+# 	softmax = Dense(1, activation='softmax', kernel_regularizer=l2(0.0002), name='softmax')(dense1)
+# 	output_model = Model(inputs=input, outputs=softmax, name=name)
+
+# 	print("MODEL OUTPUT SHAPE: ", output_model.output_shape)
+# 	# keras.utils.plot_model(output_model, "mini_net.png", show_shapes=True)
+# 	return output_model
 
 def Inception_block(input_layer, f1, f2_conv1, f2_conv3, f3_conv1, f3_conv5, f4): 
 	# Input: 
@@ -136,9 +153,10 @@ def GoogLeNet():
 
 	# model
 	model = Model(input_layer, [X, X1], name = 'GoogLeNet')
+	keras.utils.plot_model(model, "GoogLeNet.png", show_shapes=True)
 	# print("MODEL OUTPUT SHAPE: ", model.output_shape)
 	return model
 
 
-# GoogLeNet()
-# print("DONE")
+
+# goog_net("./cat.jpg")
