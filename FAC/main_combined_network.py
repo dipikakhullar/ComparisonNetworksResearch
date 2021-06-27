@@ -9,7 +9,7 @@ if __name__=="__main__":
     no_of_score_layers = 1
     save_model_name = 'practice'
     alpha = 0.01
-    reg_param = 0.01
+    reg_param = 0.00001
     lr = 0.001
     abs_loss=scaledCrossEntropy
     comp_loss=scaledCrossEntropy
